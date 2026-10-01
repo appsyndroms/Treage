@@ -29,16 +29,15 @@ class ResearchCache:
     target_configs: dict[str, TargetDefinition]
     returns: dict[str, np.ndarray]
     tail_masks: dict[str, np.ndarray]
-    window_masks: dict[
-        str,
-        dict[str, np.ndarray],
-    ]
+    window_masks: dict[str, dict[str, np.ndarray]]
 
 
 def _build_window_masks(
     frame: pd.DataFrame,
     windows,
 ) -> dict[str, dict[str, np.ndarray]]:
+    """Bygger train/validation/test-masker för varje walk-forward-fönster."""
+
     dates = pd.to_datetime(
         frame["snapshot_date"],
         errors="coerce",
@@ -98,7 +97,7 @@ def _build_tail_key(
     fraction: float,
 ) -> str:
     """
-    Backward-compatible alias for the original helper name.
+    Bakåtkompatibelt alias för den ursprungliga hjälpfunktionen.
     """
     return _tail_key(
         signal_name,
@@ -115,10 +114,10 @@ def build_research_cache(
     windows,
 ) -> ResearchCache:
     """
-    Bygger ett gemensamt cache-lager för en research-körning.
+    Bygger ett cache-lager för en research-session.
 
-    Alla specs som körs i samma runner-process använder samma
-    signaler, targets, tail-masker och walk-forward-masker.
+    Cachen innehåller bara sådant som faktiskt krävs av
+    de research-specifikationer som ska köras.
     """
 
     signals: dict[str, np.ndarray] = {}
@@ -140,107 +139,82 @@ def build_research_cache(
         for requirement in requirements
     }
 
-    # ---------------------------------------------------------
-    # Signals
-    # ---------------------------------------------------------
-
-    for signal_name in sorted(
-        required_signal_names
-    ):
+    for signal_name in required_signal_names:
         signal = build_signal(
-            frame,
-            signal_name,
-            signal_registry,
+            frame=frame,
+            signal_name=signal_name,
+            registry=signal_registry,
         )
 
-        signals[signal_name] = (
-            signal.to_numpy(
-                dtype=np.float64
-            )
+        signals[signal_name] = signal.to_numpy(
+            dtype=np.float64
         )
 
-    # ---------------------------------------------------------
-    # Targets
-    # ---------------------------------------------------------
-
-    for target_name in sorted(
-        required_target_names
-    ):
+    for target_name in required_target_names:
         target_config = target_registry.get(
             target_name
         )
 
-        target_configs[target_name] = (
-            target_config
+        target_registry.validate_frame(
+            frame,
+            target_name,
         )
+
+        target_configs[target_name] = target_config
 
         target = build_target(
             frame,
             target_config,
         )
 
-        targets[target_name] = (
-            target.to_numpy(
-                dtype=np.float64
-            )
+        targets[target_name] = target.to_numpy(
+            dtype=np.float64
         )
 
-        return_column = (
-            target_config.return_column
-        )
+        return_column = target_config.return_column
 
         if return_column not in returns:
             if return_column not in frame.columns:
                 raise ValueError(
-                    "Saknar return-kolumn: "
-                    f"{return_column}"
+                    f"Saknar return-kolumn: {return_column}"
                 )
 
-            values = pd.to_numeric(
-                frame[return_column],
-                errors="coerce",
-            )
-
             returns[return_column] = (
-                values.to_numpy(
+                pd.to_numeric(
+                    frame[return_column],
+                    errors="coerce",
+                )
+                .replace(
+                    [np.inf, -np.inf],
+                    np.nan,
+                )
+                .to_numpy(
                     dtype=np.float64
                 )
             )
 
-    # ---------------------------------------------------------
-    # Tail masks
-    # ---------------------------------------------------------
-
     for requirement in requirements:
         signal = pd.Series(
-            signals[
-                requirement.signal_name
-            ],
+            signals[requirement.signal_name],
             index=frame.index,
         )
 
         mask = tail_mask(
-            frame,
-            signal,
-            requirement.tail_fraction,
-            requirement.tail_direction,
+            frame=frame,
+            signal=signal,
+            fraction=requirement.tail_fraction,
+            direction=requirement.tail_direction,
         )
 
         key = _tail_key(
-            requirement.signal_name,
-            requirement.tail_direction,
-            requirement.tail_fraction,
+            signal_name=requirement.signal_name,
+            direction=requirement.tail_direction,
+            fraction=requirement.tail_fraction,
         )
 
-        tail_masks[key] = (
-            mask.to_numpy(
-                dtype=bool
-            )
+        tail_masks[key] = mask.to_numpy(
+            dtype=bool
         )
-
-    # ---------------------------------------------------------
-    # Walk-forward masks
-    # ---------------------------------------------------------
 
     window_masks = _build_window_masks(
         frame,
