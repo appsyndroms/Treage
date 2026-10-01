@@ -5,10 +5,9 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from outcomes.config import (
-    TARGETS,
-    TargetConfig,
-    WALK_FORWARD_WINDOWS,
+from outcomes.registry import (
+    TargetDefinition,
+    TargetRegistry,
 )
 from outcomes.targets import build_target
 from research.signals import (
@@ -29,7 +28,7 @@ class ResearchRequirement:
 class ResearchCache:
     signals: dict[str, np.ndarray]
     targets: dict[str, np.ndarray]
-    target_configs: dict[str, TargetConfig]
+    target_configs: dict[str, TargetDefinition]
     returns: dict[str, np.ndarray]
     tail_masks: dict[str, np.ndarray]
     window_masks: dict[
@@ -40,6 +39,7 @@ class ResearchCache:
 
 def _build_window_masks(
     frame: pd.DataFrame,
+    windows,
 ) -> dict[str, dict[str, np.ndarray]]:
     dates = pd.to_datetime(
         frame["snapshot_date"],
@@ -52,7 +52,7 @@ def _build_window_masks(
     ] = {}
 
     for index, window in enumerate(
-        WALK_FORWARD_WINDOWS,
+        windows,
         start=1,
     ):
         train_end = pd.Timestamp(
@@ -82,13 +82,6 @@ def _build_window_masks(
         }
 
     return result
-
-
-def _target_config_map() -> dict[str, TargetConfig]:
-    return {
-        target.name: target
-        for target in TARGETS
-    }
 
 
 def _tail_key(
@@ -121,6 +114,8 @@ def _build_tail_key(
 def build_research_cache(
     frame: pd.DataFrame,
     requirements: list[ResearchRequirement],
+    target_registry: TargetRegistry,
+    windows,
 ) -> ResearchCache:
     """
     Bygger ett gemensamt cache-lager för en research-körning.
@@ -129,10 +124,12 @@ def build_research_cache(
     signaler, targets, tail-masker och walk-forward-masker.
     """
 
-    target_configs = _target_config_map()
-
     signals: dict[str, np.ndarray] = {}
     targets: dict[str, np.ndarray] = {}
+    target_configs: dict[
+        str,
+        TargetDefinition,
+    ] = {}
     returns: dict[str, np.ndarray] = {}
     tail_masks: dict[str, np.ndarray] = {}
 
@@ -163,15 +160,13 @@ def build_research_cache(
     for target_name in sorted(
         required_target_names
     ):
-        if target_name not in target_configs:
-            raise ValueError(
-                "Okänd research target: "
-                f"{target_name}"
-            )
-
-        target_config = target_configs[
+        target_config = target_registry.get(
             target_name
-        ]
+        )
+
+        target_configs[target_name] = (
+            target_config
+        )
 
         target = build_target(
             frame,
@@ -232,7 +227,8 @@ def build_research_cache(
         )
 
     window_masks = _build_window_masks(
-        frame
+        frame,
+        windows,
     )
 
     return ResearchCache(
