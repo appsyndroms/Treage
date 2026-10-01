@@ -1,255 +1,234 @@
 from __future__ import annotations
+
 from collections import defaultdict
 from statistics import mean
 from typing import Any
+
+
 def _numeric_values(
     rows: list[dict[str, Any]],
     field: str,
 ) -> list[float]:
     values: list[float] = []
+
     for row in rows:
         value = row.get(field)
+
         if isinstance(value, bool):
             continue
+
         if isinstance(value, (int, float)):
             values.append(float(value))
+
     return values
+
+
 def _summarize_field(
     rows: list[dict[str, Any]],
     field: str,
-) -> dict[str, float | int | None]:
-    values = _numeric_values(
-        rows,
-        field,
-    )
+) -> dict[str, Any]:
+    values = _numeric_values(rows, field)
+
     if not values:
         return {
-            "count": 0,
+            "n": 0,
             "mean": None,
             "min": None,
             "max": None,
         }
+
     return {
-        "count": len(values),
+        "n": len(values),
         "mean": mean(values),
         "min": min(values),
         "max": max(values),
     }
-def _sign_consistency(
-    values: list[float],
-) -> dict[str, int | float | None]:
-    non_zero = [
-        value
-        for value in values
-        if value != 0
-    ]
-    if not non_zero:
+
+
+def _sign_consistency(values: list[float]) -> dict[str, Any]:
+    if not values:
         return {
-            "count": 0,
+            "n": 0,
             "positive": 0,
             "negative": 0,
-            "zero": len(values),
-            "positive_fraction": None,
-            "negative_fraction": None,
+            "zero": 0,
+            "consistent": False,
         }
-    positive = sum(
-        value > 0
-        for value in non_zero
-    )
-    negative = sum(
-        value < 0
-        for value in non_zero
-    )
+
+    positive = sum(value > 0 for value in values)
+    negative = sum(value < 0 for value in values)
+    zero = sum(value == 0 for value in values)
+
     return {
-        "count": len(non_zero),
+        "n": len(values),
         "positive": positive,
         "negative": negative,
-        "zero": len(values) - len(non_zero),
-        "positive_fraction": (
-            positive / len(non_zero)
-        ),
-        "negative_fraction": (
-            negative / len(non_zero)
+        "zero": zero,
+        "consistent": (
+            positive == len(values)
+            or negative == len(values)
         ),
     }
+
+
 def _threshold_consistency(
     values: list[float],
     baseline: float,
-) -> dict[str, int | float | None]:
+) -> dict[str, Any]:
     if not values:
         return {
-            "count": 0,
+            "n": 0,
+            "baseline": baseline,
             "above": 0,
             "below": 0,
             "equal": 0,
-            "above_fraction": None,
-            "below_fraction": None,
+            "consistent": False,
         }
-    above = sum(
-        value > baseline
-        for value in values
-    )
-    below = sum(
-        value < baseline
-        for value in values
-    )
-    equal = sum(
-        value == baseline
-        for value in values
-    )
+
+    above = sum(value > baseline for value in values)
+    below = sum(value < baseline for value in values)
+    equal = sum(value == baseline for value in values)
+
     return {
-        "count": len(values),
+        "n": len(values),
+        "baseline": baseline,
         "above": above,
         "below": below,
         "equal": equal,
-        "above_fraction": (
-            above / len(values)
-        ),
-        "below_fraction": (
-            below / len(values)
+        "consistent": (
+            above == len(values)
+            or below == len(values)
         ),
     }
+
+
+def _stability(
+    values: list[float],
+    definition: dict[str, Any],
+) -> dict[str, Any] | None:
+    stability_type = definition.get("stability")
+
+    if stability_type in (None, "none"):
+        return None
+
+    if stability_type == "sign":
+        return _sign_consistency(values)
+
+    if stability_type == "threshold":
+        if "baseline" not in definition:
+            raise ValueError(
+                "Threshold stability requires a baseline."
+            )
+
+        return _threshold_consistency(
+            values,
+            float(definition["baseline"]),
+        )
+
+    raise ValueError(
+        f"Unsupported stability type: {stability_type}"
+    )
+
+
 def _window_metric_means(
     windows: list[dict[str, Any]],
     field: str,
 ) -> list[float]:
     values: list[float] = []
+
     for window in windows:
-        metric = (
-            window
-            .get("metrics", {})
-            .get(field, {})
-        )
-        value = metric.get("mean")
-        if isinstance(value, bool):
-            continue
-        if isinstance(value, (int, float)):
+        summary = window.get("metrics", {}).get(field, {})
+        value = summary.get("mean")
+
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
             values.append(float(value))
+
     return values
+
+
 def _cross_window_stability(
     windows: list[dict[str, Any]],
-    baselines: dict[str, float],
-) -> dict[str, dict[str, int | float | None]]:
-    return {
-        field: _threshold_consistency(
-            _window_metric_means(
-                windows,
-                field,
-            ),
-            baseline,
+    metric_definitions: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    stability: dict[str, Any] = {}
+
+    for field, definition in metric_definitions.items():
+        if definition.get("stability") != "threshold":
+            continue
+
+        if "baseline" not in definition:
+            raise ValueError(
+                f"Threshold stability requires a baseline for '{field}'."
+            )
+
+        values = _window_metric_means(windows, field)
+
+        stability[field] = _threshold_consistency(
+            values,
+            float(definition["baseline"]),
         )
-        for field, baseline in baselines.items()
-    }
+
+    return stability
+
+
 def aggregate_walk_forward(
     results: list[dict[str, Any]],
     *,
-    numeric_fields: tuple[str, ...],
-    cross_window_baselines: dict[str, float],
+    metric_definitions: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    """
-    Aggregerar resultat från walk-forward-fönster.
-    numeric_fields anger vilka resultatfält som ska sammanfattas.
-    cross_window_baselines anger vilka baslinjer som används
-    när stabiliteten för ett metric över flera fönster analyseras.
-    Exempel:
-        numeric_fields=(
-            "n",
-            "events",
-            "event_rate",
-            "auc",
-            "lift",
-            "mean_return",
-            "median_return",
-        )
-        cross_window_baselines={
-            "auc": 0.5,
-            "lift": 1.0,
-            "mean_return": 0.0,
-        }
-    Själva metrikerna och deras baslinjer är därmed inte
-    hårdkodade i researchmotorn.
-    """
-    grouped: dict[
-        str,
-        list[dict[str, Any]],
-    ] = defaultdict(list)
+    grouped: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+
     for result in results:
-        window = str(
-            result.get(
-                "window",
-                {},
-            ).get(
-                "name",
-                "",
+        window = result.get("window", {})
+        window_name = window.get("name")
+
+        if window_name is None:
+            raise ValueError(
+                "Walk-forward result is missing window.name."
             )
-        )
-        for row in result.get(
-            "results",
-            [],
-        ):
-            grouped[window].append(row)
+
+        grouped[str(window_name)].append(result)
+
     windows: list[dict[str, Any]] = []
-    for window_name, rows in sorted(
-        grouped.items()
-    ):
-        summary = {
-            "name": window_name,
-            "result_count": len(rows),
-            "metrics": {
-                field: _summarize_field(
-                    rows,
-                    field,
-                )
-                for field in numeric_fields
-            },
-            "stability": {
-                "event_rate": _sign_consistency(
-                    _numeric_values(
-                        rows,
-                        "event_rate",
-                    )
-                ),
-                "lift": _sign_consistency(
-                    _numeric_values(
-                        rows,
-                        "lift",
-                    )
-                ),
-                "mean_return": _sign_consistency(
-                    _numeric_values(
-                        rows,
-                        "mean_return",
-                    )
-                ),
-            },
-        }
-        windows.append(summary)
-    all_rows = [
-        row
-        for rows in grouped.values()
-        for row in rows
-    ]
-    cross_window_stability = (
-        _cross_window_stability(
-            windows,
-            cross_window_baselines,
+
+    for window_name, rows in grouped.items():
+        metrics: dict[str, Any] = {}
+        stability: dict[str, Any] = {}
+
+        for field, definition in metric_definitions.items():
+            metrics[field] = _summarize_field(rows, field)
+
+            values = _numeric_values(rows, field)
+            metric_stability = _stability(values, definition)
+
+            if metric_stability is not None:
+                stability[field] = metric_stability
+
+        windows.append(
+            {
+                "name": window_name,
+                "result_count": len(rows),
+                "metrics": metrics,
+                "stability": stability,
+            }
         )
-    )
+
+    windows.sort(key=lambda window: window["name"])
+
+    overall_metrics: dict[str, Any] = {}
+
+    for field in metric_definitions:
+        overall_metrics[field] = _summarize_field(results, field)
+
     return {
         "window_count": len(windows),
-        "result_count": len(all_rows),
+        "result_count": len(results),
         "windows": windows,
         "overall": {
-            "metrics": {
-                field: _summarize_field(
-                    all_rows,
-                    field,
-                )
-                for field in numeric_fields
-            },
-            "stability": cross_window_stability,
-            "baseline_consistency": (
-                cross_window_stability
+            "metrics": overall_metrics,
+            "baseline_consistency": _cross_window_stability(
+                windows,
+                metric_definitions,
             ),
         },
     }
