@@ -5,10 +5,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from outcomes.registry import (
-    TargetDefinition,
-    TargetRegistry,
-)
+from features.registry import SignalRegistry
+from outcomes.registry import TargetDefinition, TargetRegistry
 from outcomes.targets import build_target
 from research.signals import (
     build_signal,
@@ -69,12 +67,10 @@ def _build_window_masks(
             "train": (
                 dates <= train_end
             ).to_numpy(),
-
             "validation": (
                 (dates > train_end)
                 & (dates <= validation_end)
             ).to_numpy(),
-
             "test": (
                 (dates > validation_end)
                 & (dates <= test_end)
@@ -115,6 +111,7 @@ def build_research_cache(
     frame: pd.DataFrame,
     requirements: list[ResearchRequirement],
     target_registry: TargetRegistry,
+    signal_registry: SignalRegistry,
     windows,
 ) -> ResearchCache:
     """
@@ -143,12 +140,17 @@ def build_research_cache(
         for requirement in requirements
     }
 
+    # ---------------------------------------------------------
+    # Signals
+    # ---------------------------------------------------------
+
     for signal_name in sorted(
         required_signal_names
     ):
         signal = build_signal(
             frame,
             signal_name,
+            signal_registry,
         )
 
         signals[signal_name] = (
@@ -156,6 +158,10 @@ def build_research_cache(
                 dtype=np.float64
             )
         )
+
+    # ---------------------------------------------------------
+    # Targets
+    # ---------------------------------------------------------
 
     for target_name in sorted(
         required_target_names
@@ -201,9 +207,15 @@ def build_research_cache(
                 )
             )
 
+    # ---------------------------------------------------------
+    # Tail masks
+    # ---------------------------------------------------------
+
     for requirement in requirements:
         signal = pd.Series(
-            signals[requirement.signal_name],
+            signals[
+                requirement.signal_name
+            ],
             index=frame.index,
         )
 
@@ -225,6 +237,10 @@ def build_research_cache(
                 dtype=bool
             )
         )
+
+    # ---------------------------------------------------------
+    # Walk-forward masks
+    # ---------------------------------------------------------
 
     window_masks = _build_window_masks(
         frame,
