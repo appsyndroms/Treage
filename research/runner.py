@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Sequence
 
 from ..features.dataset import FeatureDataset
-from ..features.registry import load_signal_registry
 from ..outcomes.registry import load_target_registry
 from .engine import run_spec
 from .session import build_session
@@ -201,10 +200,6 @@ def run_research(
         registry=research_registry,
     )
 
-    signal_registry = (
-        load_signal_registry()
-    )
-
     target_registry = (
         load_target_registry()
     )
@@ -212,7 +207,6 @@ def run_research(
     session = build_session(
         specs=specs,
         dataset=dataset,
-        signal_registry=signal_registry,
         target_registry=target_registry,
         windows=windows,
     )
