@@ -30,6 +30,16 @@ class TargetDefinition:
 class TargetRegistry:
     """Läser och tillhandahåller target-definitioner."""
 
+    VALID_TASKS = {
+        "classification",
+        "regression",
+    }
+
+    VALID_DIRECTIONS = {
+        "above",
+        "below",
+    }
+
     def __init__(
         self,
         path: Path | str = DEFAULT_REGISTRY_PATH,
@@ -66,6 +76,10 @@ class TargetRegistry:
                 ),
             )
 
+            self._validate_definition(
+                definition
+            )
+
             if definition.id in targets:
                 raise ValueError(
                     "Dubblett i target-registret: "
@@ -76,11 +90,51 @@ class TargetRegistry:
 
         return targets
 
+    @classmethod
+    def _validate_definition(
+        cls,
+        definition: TargetDefinition,
+    ) -> None:
+        if not definition.id:
+            raise ValueError(
+                "Target saknar id."
+            )
+
+        if not definition.return_column:
+            raise ValueError(
+                f"Target '{definition.id}' "
+                "saknar return_column."
+            )
+
+        if definition.task not in cls.VALID_TASKS:
+            raise ValueError(
+                f"Okänd target-task för "
+                f"'{definition.id}': "
+                f"{definition.task}"
+            )
+
+        if definition.direction not in cls.VALID_DIRECTIONS:
+            raise ValueError(
+                f"Okänd target-riktning för "
+                f"'{definition.id}': "
+                f"{definition.direction}"
+            )
+
+        if (
+            definition.task == "regression"
+            and not definition.target_column
+        ):
+            raise ValueError(
+                f"Regression-target '{definition.id}' "
+                "saknar target_column."
+            )
+
     def get(
         self,
         target_id: str,
     ) -> TargetDefinition:
         """Hämtar en target-definition."""
+
         try:
             return self._targets[target_id]
         except KeyError as exc:
@@ -90,13 +144,17 @@ class TargetRegistry:
 
     def all(self) -> list[TargetDefinition]:
         """Returnerar alla registrerade targets."""
-        return list(self._targets.values())
+
+        return list(
+            self._targets.values()
+        )
 
     def by_task(
         self,
         task: str,
     ) -> list[TargetDefinition]:
         """Returnerar targets för en viss task-typ."""
+
         return [
             target
             for target in self._targets.values()
@@ -110,12 +168,16 @@ class TargetRegistry:
     ) -> None:
         """Kontrollerar att targetens nödvändiga kolumn finns."""
 
-        definition = self.get(target_id)
+        definition = self.get(
+            target_id
+        )
 
         required_column = (
             definition.target_column
-            if definition.task == "regression"
-            and definition.target_column
+            if (
+                definition.task == "regression"
+                and definition.target_column
+            )
             else definition.return_column
         )
 
@@ -130,4 +192,5 @@ def load_target_registry(
     path: Path | str = DEFAULT_REGISTRY_PATH,
 ) -> TargetRegistry:
     """Skapar ett target-register från JSON."""
+
     return TargetRegistry(path)
