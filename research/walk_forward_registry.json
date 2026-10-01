@@ -1,0 +1,30 @@
+{
+  "version": 1,
+
+  "metrics": {
+    "n": {
+      "stability": "none"
+    },
+    "events": {
+      "stability": "none"
+    },
+    "event_rate": {
+      "stability": "sign"
+    },
+    "auc": {
+      "stability": "threshold",
+      "baseline": 0.5
+    },
+    "lift": {
+      "stability": "threshold",
+      "baseline": 1.0
+    },
+    "mean_return": {
+      "stability": "threshold",
+      "baseline": 0.0
+    },
+    "median_return": {
+      "stability": "none"
+    }
+  }
+}
