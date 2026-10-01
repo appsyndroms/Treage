@@ -1,5 +1,3 @@
-Nästa fil: outcomes/README.md.
-
 Outcomes
 
 outcomes/ är Treuddens lager för definition och konstruktion av forskningsutfall.
