@@ -1,10 +1,4 @@
-Absolut. Vi tar en fil i taget, och jag skriver ut hela filen utan extra kommentarer.
-
-Först:
-
-README.md
-
-Treudden
+#Treudden
 
 Treudden är ett forskningsramverk för att undersöka om olika informationskällor tillsammans innehåller historiskt användbar information om framtida marknadsutfall.
 
