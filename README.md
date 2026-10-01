@@ -160,3 +160,5 @@ SE...
 Det är den stora arkitekturella vinsten.
 
 Blankdiss har redan byggt första udden och mycket av infrastrukturen. Treudden blir platsen där vi gör infrastrukturen generell.
+
+Tanken är att vid ett senare skede om det blir kommersiellt att skapa Treudden Beslut AB och treuddenbeslut.se
