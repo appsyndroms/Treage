@@ -1,5 +1,3 @@
-features/README.md
-
 Features
 
 features/ är Treuddens lager för standardiserade forskningssignaler.
