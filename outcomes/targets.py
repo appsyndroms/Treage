@@ -5,10 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from outcomes.registry import (
-    TargetDefinition,
-    TargetRegistry,
-)
+from .registry import TargetDefinition
 
 
 def build_target(
