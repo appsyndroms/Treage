@@ -1,37 +1,38 @@
-"""Generiska signaloperationer för Treudden research."""
+"""Gemensam signalhantering för Treuddens research."""
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
+from features.registry import (
+    SignalRegistry,
+)
 
-def require_column(
+
+def build_signal(
     frame: pd.DataFrame,
-    column: str,
-) -> None:
-    """Kontrollerar att en feature-kolumn finns."""
-    if column not in frame.columns:
-        raise ValueError(
-            f"Saknar feature-kolumn '{column}'."
-        )
-
-
-def numeric_signal(
-    frame: pd.DataFrame,
-    column: str,
+    signal_name: str,
+    registry: SignalRegistry,
 ) -> pd.Series:
     """
-    Hämtar en numerisk signal från ett feature-dataset.
+    Returnerar en numerisk signal.
 
-    Funktionen känner inte till signalens källa eller betydelse.
-    Signalen kan exempelvis komma från blankning, insiderdata,
-    rapporter, marknad eller sektor.
+    Signalens definition hämtas från SignalRegistry.
+    Research-lagret behöver därför inte känna till
+    vilken datakälla eller feature-kolumn signalen använder.
     """
-    require_column(frame, column)
+    definition = registry.get(
+        signal_name
+    )
+
+    registry.validate_frame(
+        frame,
+        signal_name,
+    )
 
     return pd.to_numeric(
-        frame[column],
+        frame[definition.column],
         errors="coerce",
     ).replace(
         [np.inf, -np.inf],
@@ -55,22 +56,21 @@ def tail_mask(
         fraction=0.05, direction="lower"
         -> lägsta 5 % varje snapshot-datum.
 
-    Rangordningen görs inom varje snapshot-datum så att
-    signalnivåer mellan olika perioder inte blandas ihop.
+    Rangordningen görs per snapshot-datum så att ett experiment
+    inte domineras av perioder med generellt högre eller lägre
+    signalnivåer.
     """
     if not 0 < fraction <= 1:
         raise ValueError(
             f"Ogiltig tail-fraktion: {fraction}"
         )
 
-    if direction not in {"upper", "lower"}:
+    if direction not in {
+        "upper",
+        "lower",
+    }:
         raise ValueError(
             f"Ogiltig tail-riktning: {direction}"
-        )
-
-    if "snapshot_date" not in frame.columns:
-        raise ValueError(
-            "Saknar kolumn 'snapshot_date'."
         )
 
     working = pd.DataFrame(
@@ -102,3 +102,42 @@ def tail_mask(
         return rank >= (1.0 - fraction)
 
     return rank <= fraction
+
+
+def signal_direction(
+    signal_name: str,
+    registry: SignalRegistry,
+) -> str:
+    """
+    Returnerar signalens standardriktning.
+
+    Riktningen ska i första hand beskrivas av signalens
+    metadata i registret, inte av hårdkodade signalnamn.
+    """
+    definition = registry.get(
+        signal_name
+    )
+
+    direction = getattr(
+        definition,
+        "direction",
+        None,
+    )
+
+    if direction is None:
+        raise ValueError(
+            "Signal saknar standardriktning: "
+            f"{signal_name}"
+        )
+
+    return direction
+
+
+def all_signal_names(
+    registry: SignalRegistry,
+) -> list[str]:
+    """Returnerar alla registrerade signal-ID:n."""
+    return [
+        signal.id
+        for signal in registry.all()
+    ]
