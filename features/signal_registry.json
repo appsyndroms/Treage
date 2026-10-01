@@ -1,0 +1,158 @@
+{
+  "version": 1,
+  "signals": [
+    {
+      "id": "blanking.short_interest",
+      "source": "blanking",
+      "column": "short_interest_pct",
+      "type": "numeric",
+      "description": "Aktuell short interest-nivå."
+    },
+    {
+      "id": "blanking.short_interest_change",
+      "source": "blanking",
+      "column": "short_interest_delta_pp",
+      "type": "numeric",
+      "description": "Förändring i short interest."
+    },
+    {
+      "id": "blanking.short_interest_acceleration",
+      "source": "blanking",
+      "column": "short_interest_acceleration_pp",
+      "type": "numeric",
+      "description": "Acceleration i förändringen av short interest."
+    },
+
+    {
+      "id": "market.return_5d",
+      "source": "market",
+      "column": "price_return_5d",
+      "type": "numeric",
+      "description": "Aktiens prisutveckling senaste 5 handelsdagarna."
+    },
+    {
+      "id": "market.return_20d",
+      "source": "market",
+      "column": "price_return_20d",
+      "type": "numeric",
+      "description": "Aktiens prisutveckling senaste 20 handelsdagarna."
+    },
+    {
+      "id": "market.return_60d",
+      "source": "market",
+      "column": "price_return_60d",
+      "type": "numeric",
+      "description": "Aktiens prisutveckling senaste 60 handelsdagarna."
+    },
+    {
+      "id": "market.volatility_20d",
+      "source": "market",
+      "column": "price_volatility_20d",
+      "type": "numeric",
+      "description": "Prisvolatilitet senaste 20 handelsdagarna."
+    },
+
+    {
+      "id": "market.distance_from_20d_high",
+      "source": "market",
+      "column": "price_distance_from_20d_high",
+      "type": "numeric",
+      "description": "Avstånd från 20-dagars högsta pris."
+    },
+    {
+      "id": "market.distance_from_60d_high",
+      "source": "market",
+      "column": "price_distance_from_60d_high",
+      "type": "numeric",
+      "description": "Avstånd från 60-dagars högsta pris."
+    },
+
+    {
+      "id": "market.return_5d_relative_market",
+      "source": "market",
+      "column": "price_return_5d_relative_market",
+      "type": "numeric",
+      "description": "5-dagars relativ avkastning mot marknaden."
+    },
+    {
+      "id": "market.return_20d_relative_market",
+      "source": "market",
+      "column": "price_return_20d_relative_market",
+      "type": "numeric",
+      "description": "20-dagars relativ avkastning mot marknaden."
+    },
+    {
+      "id": "market.return_60d_relative_market",
+      "source": "market",
+      "column": "price_return_60d_relative_market",
+      "type": "numeric",
+      "description": "60-dagars relativ avkastning mot marknaden."
+    },
+
+    {
+      "id": "market.return_5d_relative_sector",
+      "source": "market",
+      "column": "price_return_5d_relative_sector",
+      "type": "numeric",
+      "description": "5-dagars relativ avkastning mot sektorn."
+    },
+    {
+      "id": "market.return_20d_relative_sector",
+      "source": "market",
+      "column": "price_return_20d_relative_sector",
+      "type": "numeric",
+      "description": "20-dagars relativ avkastning mot sektorn."
+    },
+    {
+      "id": "market.return_60d_relative_sector",
+      "source": "market",
+      "column": "price_return_60d_relative_sector",
+      "type": "numeric",
+      "description": "60-dagars relativ avkastning mot sektorn."
+    },
+
+    {
+      "id": "insider.net_buy",
+      "source": "insider",
+      "column": "insider_net_buy",
+      "type": "numeric",
+      "description": "Netto insiderköp."
+    },
+    {
+      "id": "insider.net_sell",
+      "source": "insider",
+      "column": "insider_net_sell",
+      "type": "numeric",
+      "description": "Netto insiderförsäljning."
+    },
+    {
+      "id": "insider.cluster_buy",
+      "source": "insider",
+      "column": "insider_cluster_buy",
+      "type": "numeric",
+      "description": "Samlad insiderköpsaktivitet."
+    },
+
+    {
+      "id": "report.eps_surprise",
+      "source": "report",
+      "column": "eps_surprise",
+      "type": "numeric",
+      "description": "Skillnad mellan rapporterat EPS och förväntat EPS."
+    },
+    {
+      "id": "report.revenue_surprise",
+      "source": "report",
+      "column": "revenue_surprise",
+      "type": "numeric",
+      "description": "Skillnad mellan rapporterad omsättning och förväntad omsättning."
+    },
+    {
+      "id": "report.guidance_change",
+      "source": "report",
+      "column": "guidance_change",
+      "type": "numeric",
+      "description": "Förändring i bolagets guidning."
+    }
+  ]
+}
