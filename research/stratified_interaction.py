@@ -66,7 +66,9 @@ def _rate(
     if n == 0:
         return 0, 0, None
 
-    events = int((selected > 0).sum())
+    events = int(
+        (selected > 0).sum()
+    )
 
     return n, events, events / n
 
@@ -255,6 +257,7 @@ def analyse_stratified_interaction(
     bootstrap: bool,
     bootstrap_iterations: int,
     spec_id: str,
+    rules: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """
     Generic stratified interaction analysis.
@@ -263,43 +266,75 @@ def analyse_stratified_interaction(
     The third signal is the condition whose effect is measured
     within each two-dimensional stratum.
 
-    For each stratum:
-
-        interaction_effect =
-            P(event | test signal)
-            - P(event | not test signal)
-
-    The analysis then compares this interaction effect between
-    different strata using a difference-in-differences calculation.
-
-    The first two signals must each provide at least three bins.
-    The third signal is evaluated using the supplied tail fraction.
-
-    The analysis is therefore independent of the semantic meaning
-    of the signals. The same mechanism can be used for:
-
-        blanking x market -> insider
-        market x insider -> report
-        report x blanking -> market
-        or any other three-signal combination.
-
-    The interpretation of the signals belongs to the research
-    specification, not to this implementation.
+    The comparison strategy is defined by the research registry.
     """
+
     if len(signals) != 3 or len(fractions) != 3:
         raise ValueError(
             "stratified_interaction kräver exakt tre signaler."
         )
 
-    if (
-        len(signals[0].bins) < 3
-        or len(signals[1].bins) < 3
-    ):
+    stratification_signals = int(
+        rules.get(
+            "stratification_signals",
+            0,
+        )
+    )
+
+    test_signal = int(
+        rules.get(
+            "test_signal",
+            0,
+        )
+    )
+
+    if stratification_signals != 2:
         raise ValueError(
-            "De två stratifieringssignalerna måste ha minst tre bins."
+            "stratified_interaction kräver två "
+            "stratifieringssignaler."
         )
 
-    target = cache.targets[target_name]
+    if test_signal != 3:
+        raise ValueError(
+            "stratified_interaction kräver den tredje "
+            "signalen som testsignal."
+        )
+
+    comparison = rules.get(
+        "comparison"
+    )
+
+    if comparison != "outer_bands":
+        raise ValueError(
+            "stratified_interaction stöder endast "
+            "comparison='outer_bands'."
+        )
+
+    minimum_bins = int(
+        rules.get(
+            "minimum_bins_per_stratification_signal",
+            0,
+        )
+    )
+
+    if minimum_bins < 1:
+        raise ValueError(
+            "stratified_interaction saknar giltigt "
+            "minimum_bins_per_stratification_signal."
+        )
+
+    if (
+        len(signals[0].bins) < minimum_bins
+        or len(signals[1].bins) < minimum_bins
+    ):
+        raise ValueError(
+            "De två stratifieringssignalerna måste ha "
+            f"minst {minimum_bins} bins."
+        )
+
+    target = cache.targets[
+        target_name
+    ]
 
     window_mask = cache.window_masks[
         window_name
@@ -314,14 +349,6 @@ def analyse_stratified_interaction(
         cache,
         signals[1],
     )
-
-    if (
-        len(first_bands) < 3
-        or len(second_bands) < 3
-    ):
-        raise ValueError(
-            "Minst tre regimer krävs för båda stratifieringssignalerna."
-        )
 
     test_mask = cache.tail_masks[
         _tail_key(
@@ -366,20 +393,19 @@ def analyse_stratified_interaction(
     first_name = signals[0].name
     second_name = signals[1].name
 
-    # ------------------------------------------------------------
-    # First stratification dimension:
-    #
-    # Compare the outer bands of signal 1 while holding
-    # each band of signal 2 fixed.
-    # ------------------------------------------------------------
     for j, (
         second_band_label,
         _,
         _,
         _,
     ) in enumerate(second_bands):
-        reference = cells[(strong_i, j)]
-        comparison = cells[(weak_i, j)]
+        reference = cells[
+            (strong_i, j)
+        ]
+
+        comparison_cell = cells[
+            (weak_i, j)
+        ]
 
         results.append(
             _contrast_row(
@@ -401,7 +427,7 @@ def analyse_stratified_interaction(
                     f"__{second_band_label}"
                 ),
                 reference=reference,
-                comparison=comparison,
+                comparison=comparison_cell,
                 bootstrap=bootstrap,
                 bootstrap_iterations=(
                     bootstrap_iterations
@@ -409,20 +435,19 @@ def analyse_stratified_interaction(
             )
         )
 
-    # ------------------------------------------------------------
-    # Second stratification dimension:
-    #
-    # Compare the outer bands of signal 2 while holding
-    # each band of signal 1 fixed.
-    # ------------------------------------------------------------
     for i, (
         first_band_label,
         _,
         _,
         _,
     ) in enumerate(first_bands):
-        reference = cells[(i, strong_j)]
-        comparison = cells[(i, weak_j)]
+        reference = cells[
+            (i, strong_j)
+        ]
+
+        comparison_cell = cells[
+            (i, weak_j)
+        ]
 
         results.append(
             _contrast_row(
@@ -444,7 +469,7 @@ def analyse_stratified_interaction(
                     f"__{second_bands[weak_j][0]}"
                 ),
                 reference=reference,
-                comparison=comparison,
+                comparison=comparison_cell,
                 bootstrap=bootstrap,
                 bootstrap_iterations=(
                     bootstrap_iterations
@@ -452,20 +477,11 @@ def analyse_stratified_interaction(
             )
         )
 
-    # ------------------------------------------------------------
-    # Joint contrast:
-    #
-    # Compare the joint outer bands:
-    #
-    # signal 1 strong + signal 2 strong
-    # versus
-    # signal 1 weak   + signal 2 weak
-    # ------------------------------------------------------------
     reference = cells[
         (strong_i, strong_j)
     ]
 
-    comparison = cells[
+    comparison_cell = cells[
         (weak_i, weak_j)
     ]
 
@@ -487,7 +503,7 @@ def analyse_stratified_interaction(
                 f"__{second_bands[weak_j][0]}"
             ),
             reference=reference,
-            comparison=comparison,
+            comparison=comparison_cell,
             bootstrap=bootstrap,
             bootstrap_iterations=(
                 bootstrap_iterations
