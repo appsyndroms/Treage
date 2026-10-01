@@ -23,6 +23,10 @@ class ResearchRegistry:
         str,
         tuple[int, int | None],
     ]
+    analysis_rules: dict[
+        str,
+        dict[str, Any],
+    ]
 
 
 def load_research_registry(
@@ -64,6 +68,22 @@ def load_research_registry(
             else int(maximum),
         )
 
+    raw_rules = payload.get(
+        "analysis_rules",
+        {},
+    )
+
+    if not isinstance(raw_rules, dict):
+        raise ValueError(
+            "analysis_rules måste vara ett objekt."
+        )
+
+    analysis_rules = {
+        str(analysis_type): dict(rules)
+        for analysis_type, rules in raw_rules.items()
+        if isinstance(rules, dict)
+    }
+
     return ResearchRegistry(
         modes=frozenset(
             str(value)
@@ -87,6 +107,7 @@ def load_research_registry(
             )
         ),
         analysis_signal_requirements=requirements,
+        analysis_rules=analysis_rules,
     )
 
 
@@ -210,7 +231,7 @@ def _validate_signal(
 
 def _validate_analysis(
     analysis: AnalysisSpec,
-    signal_count: int,
+    signals: tuple[SignalSpec, ...],
     registry: ResearchRegistry,
 ) -> None:
     if analysis.type not in registry.analysis_types:
@@ -233,6 +254,7 @@ def _validate_analysis(
         )
 
     min_signals, max_signals = requirement
+    signal_count = len(signals)
 
     if signal_count < min_signals:
         if max_signals == min_signals:
@@ -254,6 +276,83 @@ def _validate_analysis(
             f"{analysis.type} kräver "
             f"exakt {max_signals} signaler."
         )
+
+    rules = registry.analysis_rules.get(
+        analysis.type
+    )
+
+    if rules is None:
+        return
+
+    stratification_signals = rules.get(
+        "stratification_signals"
+    )
+
+    test_signal = rules.get(
+        "test_signal"
+    )
+
+    if stratification_signals is not None:
+        stratification_signals = int(
+            stratification_signals
+        )
+
+        if (
+            stratification_signals < 1
+            or stratification_signals >= signal_count
+        ):
+            raise ValueError(
+                f"{analysis.type} har ogiltigt antal "
+                f"stratification_signals: "
+                f"{stratification_signals}"
+            )
+
+    if test_signal is not None:
+        test_signal = int(
+            test_signal
+        )
+
+        if test_signal < 1:
+            raise ValueError(
+                f"{analysis.type} har ogiltigt "
+                f"test_signal: {test_signal}"
+            )
+
+    minimum_bins = rules.get(
+        "minimum_bins_per_stratification_signal"
+    )
+
+    if minimum_bins is not None:
+        minimum_bins = int(
+            minimum_bins
+        )
+
+        if minimum_bins < 1:
+            raise ValueError(
+                f"{analysis.type} har ogiltigt "
+                f"minimum_bins_per_stratification_signal: "
+                f"{minimum_bins}"
+            )
+
+        if stratification_signals is None:
+            raise ValueError(
+                f"{analysis.type} anger minimum bins "
+                f"utan stratification_signals."
+            )
+
+        for index in range(
+            stratification_signals
+        ):
+            signal = signals[index]
+
+            if len(signal.bins) < minimum_bins:
+                raise ValueError(
+                    f"{analysis.type} kräver minst "
+                    f"{minimum_bins} bins för "
+                    f"stratifieringssignal "
+                    f"{index + 1}: "
+                    f"{signal.name}"
+                )
 
 
 def validate_spec(
@@ -279,7 +378,7 @@ def validate_spec(
 
     _validate_analysis(
         analysis=spec.analysis,
-        signal_count=len(spec.signals),
+        signals=spec.signals,
         registry=registry,
     )
 
@@ -439,7 +538,7 @@ def load_spec(
 
     _validate_analysis(
         analysis=analysis,
-        signal_count=len(signals),
+        signals=tuple(signals),
         registry=registry,
     )
 
