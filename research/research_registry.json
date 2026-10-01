@@ -55,5 +55,15 @@
       "min": 3,
       "max": 3
     }
+  },
+
+  "analysis_rules": {
+    "stratified_interaction": {
+      "stratification_signals": 2,
+      "test_signal": 1,
+      "minimum_bins_per_stratification_signal": 3,
+      "comparison": "outer_bands",
+      "effect": "difference_in_differences"
+    }
   }
 }
