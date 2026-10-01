@@ -141,6 +141,9 @@ class AnalysisSpec:
     type: str = "tail"
     bootstrap: bool = False
     bootstrap_iterations: int = 2000
+    rules: dict[str, Any] = field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         if self.bootstrap_iterations < 1:
@@ -312,7 +315,10 @@ def _validate_analysis(
             test_signal
         )
 
-        if test_signal < 1:
+        if (
+            test_signal < 1
+            or test_signal > signal_count
+        ):
             raise ValueError(
                 f"{analysis.type} har ogiltigt "
                 f"test_signal: {test_signal}"
@@ -528,12 +534,20 @@ def load_spec(
         )
     )
 
+    analysis_rules = dict(
+        registry.analysis_rules.get(
+            analysis_type,
+            {},
+        )
+    )
+
     analysis = AnalysisSpec(
         type=analysis_type,
         bootstrap=bootstrap,
         bootstrap_iterations=(
             bootstrap_iterations
         ),
+        rules=analysis_rules,
     )
 
     _validate_analysis(
