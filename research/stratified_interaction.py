@@ -140,7 +140,14 @@ def _contrast_row(
     comparison: dict[str, Any],
     bootstrap: bool,
     bootstrap_iterations: int,
+    effect: str,
 ) -> dict[str, Any]:
+    if effect != "difference_in_differences":
+        raise ValueError(
+            "stratified_interaction stöder endast "
+            "effect='difference_in_differences'."
+        )
+
     reference_effect = reference[
         "interaction_effect"
     ]
@@ -205,6 +212,7 @@ def _contrast_row(
         "reference_interaction_effect": reference_effect,
         "comparison_interaction_effect": comparison_effect,
         "interaction_difference_in_differences": difference,
+        "effect": effect,
         "bootstrap_ci_low": ci_low,
         "bootstrap_ci_high": ci_high,
         "reference_selected_n": reference[
@@ -266,7 +274,8 @@ def analyse_stratified_interaction(
     The third signal is the condition whose effect is measured
     within each two-dimensional stratum.
 
-    The comparison strategy is defined by the research registry.
+    The comparison and effect strategies are defined by the
+    research registry.
     """
 
     if len(signals) != 3 or len(fractions) != 3:
@@ -308,6 +317,16 @@ def analyse_stratified_interaction(
         raise ValueError(
             "stratified_interaction stöder endast "
             "comparison='outer_bands'."
+        )
+
+    effect = rules.get(
+        "effect"
+    )
+
+    if effect != "difference_in_differences":
+        raise ValueError(
+            "stratified_interaction stöder endast "
+            "effect='difference_in_differences'."
         )
 
     minimum_bins = int(
@@ -432,6 +451,7 @@ def analyse_stratified_interaction(
                 bootstrap_iterations=(
                     bootstrap_iterations
                 ),
+                effect=effect,
             )
         )
 
@@ -474,6 +494,7 @@ def analyse_stratified_interaction(
                 bootstrap_iterations=(
                     bootstrap_iterations
                 ),
+                effect=effect,
             )
         )
 
@@ -508,6 +529,7 @@ def analyse_stratified_interaction(
             bootstrap_iterations=(
                 bootstrap_iterations
             ),
+            effect=effect,
         )
     )
 
