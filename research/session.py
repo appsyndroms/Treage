@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from ..features.dataset import FeatureDataset
-from ..features.registry import SignalRegistry
 from ..outcomes.registry import TargetRegistry
 from .cache import (
     ResearchCache,
@@ -72,7 +71,6 @@ def _required_requirements(
 def build_session(
     specs: Sequence[ResearchSpec],
     dataset: FeatureDataset,
-    signal_registry: SignalRegistry,
     target_registry: TargetRegistry,
     windows,
 ) -> ResearchSession:
@@ -90,10 +88,9 @@ def build_session(
     )
 
     cache = build_research_cache(
-        frame=dataset.frame,
+        dataset=dataset,
         requirements=requirements,
         target_registry=target_registry,
-        signal_registry=signal_registry,
         windows=windows,
     )
 
