@@ -5,9 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from features.registry import (
-    SignalRegistry,
-)
+from features.registry import SignalRegistry
 
 
 def build_signal(
@@ -102,35 +100,6 @@ def tail_mask(
         return rank >= (1.0 - fraction)
 
     return rank <= fraction
-
-
-def signal_direction(
-    signal_name: str,
-    registry: SignalRegistry,
-) -> str:
-    """
-    Returnerar signalens standardriktning.
-
-    Riktningen ska i första hand beskrivas av signalens
-    metadata i registret, inte av hårdkodade signalnamn.
-    """
-    definition = registry.get(
-        signal_name
-    )
-
-    direction = getattr(
-        definition,
-        "direction",
-        None,
-    )
-
-    if direction is None:
-        raise ValueError(
-            "Signal saknar standardriktning: "
-            f"{signal_name}"
-        )
-
-    return direction
 
 
 def all_signal_names(
