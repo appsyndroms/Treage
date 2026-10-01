@@ -1,0 +1,59 @@
+{
+  "version": 1,
+
+  "modes": [
+    "scan",
+    "deep"
+  ],
+
+  "analysis_types": [
+    "interaction",
+    "tail",
+    "regime_comparison",
+    "multi_regime_comparison",
+    "nested_regime_comparison",
+    "conditional_regime_comparison",
+    "stratified_regime_comparison",
+    "stratified_interaction"
+  ],
+
+  "directions": [
+    "upper",
+    "lower"
+  ],
+
+  "analysis_signal_requirements": {
+    "tail": {
+      "min": 1,
+      "max": 1
+    },
+    "interaction": {
+      "min": 2,
+      "max": 2
+    },
+    "regime_comparison": {
+      "min": 2,
+      "max": 2
+    },
+    "multi_regime_comparison": {
+      "min": 3,
+      "max": null
+    },
+    "nested_regime_comparison": {
+      "min": 3,
+      "max": 3
+    },
+    "conditional_regime_comparison": {
+      "min": 2,
+      "max": null
+    },
+    "stratified_regime_comparison": {
+      "min": 3,
+      "max": 3
+    },
+    "stratified_interaction": {
+      "min": 3,
+      "max": 3
+    }
+  }
+}
