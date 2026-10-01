@@ -1,164 +1,386 @@
 # Treudden
-Ja. Jag har nu tittat på den faktiska nuvarande Blankdiss-strukturen, inte bara README:n. Det viktigaste jag ser är att Blankdiss redan har byggt fram flera delar som egentligen hör hemma i Treudden.
 
-Framför allt finns ett tydligt separationsmönster: data → features → forskning → kandidater → prospektiv utvärdering → verifiering. 
+Treudden är ett forskningsramverk för att undersöka om olika informationskällor tillsammans innehåller historiskt användbar information om framtida marknadsutfall\.
 
-Jag skulle därför göra Treudden till en renare generalisering av Blankdiss, inte en kopia.
+Namnet Treudden kommer från de tre huvudsakliga informationsområden som systemet ska kunna kombinera:
 
-Några konkreta fynd:
+1. **Blankning**
+2. **Insiderdata**
+3. **Rapporter och konsensus**
 
-* data/processed/analysis/ innehåller nu 28 feature-chunks, totalt 208 594 feature-rader, plus metadata och QC.
-* Feature-datasetet innehåller redan pris, blankning, marknad och sektor, inklusive forward returns på 1/3/5/10/20/60 handelsdagar.
-* Det finns ett separat short_cycles-dataset.
-* data/processed/ml/ innehåller bl.a. ml_results.jsonl, economic_results.json, latest_run.json samt research/runs.
-* ml/research/ är redan en ganska komplett deklarativ forskningsmotor med specs, sessions, cache, signals, engine, runner, reporting, verification och walk-forward.
-* analysis/ innehåller mycket som är specifikt för att bygga just Blankdiss-featuret, och det ska inte kopieras rakt av till Treudden.
+Treudden ska inte vara ett system som i förväg antar vilken av dessa informationskällor som är viktigast\.
 
-Det betyder att jag skulle börja Treudden ungefär så här:
+I stället ska systemet kunna ställa frågor av typen:
 
+> Finns det historiskt observerbara samband mellan en eller flera signaler och ett definierat framtida utfall?
+
+## Grundidé
+
+Treudden separerar fyra saker:
+
+```text
+DATA
+  │
+  ▼
+FEATURES / SIGNALS
+  │
+  ▼
+RESEARCH
+  │
+  ▼
+OUTCOMES
+```
+
+Det är viktigt att signalerna och utfallet hålls separerade\.
+
+En signal beskriver vad som var känt eller observerbart vid en viss tidpunkt\.
+
+Ett outcome beskriver vad som därefter faktiskt hände\.
+
+Research\-lagret undersöker relationen mellan dem\.
+
+Det innebär exempelvis att samma framtida avkastningsutfall kan användas för att undersöka:
+
+- blankningssignaler
+- insidertransaktioner
+- rapportdata
+- konsensusförändringar
+- kombinationer av ovanstående
+
+## Arkitektur
+
+Den nuvarande strukturen är:
+
+```text
 Treudden/
 │
-├── research/
-│   ├── engine/
-│   ├── specs/
-│   ├── candidates/
-│   ├── evaluation/
-│   └── verification/
-│
 ├── features/
-│   ├── builders/
-│   ├── registry/
-│   ├── dataset/
-│   └── qc/
-│
-├── models/
-│   ├── conventional/
-│   ├── experiments/
-│   └── ai/
+│   ├── dataset.py
+│   ├── registry.py
+│   └── signal_registry.json
 │
 ├── outcomes/
-│   ├── returns/
-│   ├── targets/
-│   └── events/
+│   ├── registry.py
+│   ├── targets.py
+│   └── target_registry.json
 │
-├── data/
-│   ├── raw/
-│   │   ├── blanking/
-│   │   ├── insider/
-│   │   ├── reports/
-│   │   ├── consensus/
-│   │   └── market/
-│   │
-│   └── processed/
-│       ├── features/
-│       ├── outcomes/
-│       └── research/
-│
-├── tests/
+├── research/
+│   ├── analysis_utils.py
+│   ├── bootstrap.py
+│   ├── cache.py
+│   ├── conditional.py
+│   ├── derived_metrics.py
+│   ├── engine.py
+│   ├── evaluator.py
+│   ├── interaction.py
+│   ├── multi_regime.py
+│   ├── nested_regime.py
+│   ├── regime.py
+│   ├── research_registry.json
+│   ├── runner.py
+│   ├── session.py
+│   ├── signals.py
+│   ├── spec.py
+│   ├── stratified_interaction.py
+│   ├── stratified_regime.py
+│   ├── walk_forward.py
+│   └── walk_forward_registry.json
 │
 └── README.md
+```
 
-Det jag vill lyfta från Blankdiss
+Strukturen kommer att växa när datakällorna kopplas in\.
 
-1. Research Engine — nästan direkt
+## Features
 
-Det här är den tydligaste kandidaten. Den deklarativa modellen, research specs, sessions, caching, scan/deep, candidates, evaluation och verification är precis den typ av generell motor Treudden behöver.
+`features/` definierar hur observerbara signaler representeras i Treudden\.
 
-2. Feature-lagret — konceptet och mycket av infrastrukturen
+En signal har bland annat:
 
-Inte feature_fi.py som sådan, utan principen:
+- ett stabilt ID
+- en källa
+- en feature\-kolumn
+- en typ
+- en beskrivning
 
-olika datakällor → standardiserade features → gemensamt dataset
+Signaldefinitionerna ligger i:
 
-Blankdiss har redan visat att detta fungerar med 208 594 rader och 28 chunks. Metadata innehåller dessutom source fingerprint, featurekolumner, chunkstorlek och datakvalitet. Det är väldigt värdefullt att ta med.
+```text
+features/signal_registry.json
+```
 
-3. Historiska outcomes
+Kod som behöver använda en signal ska inte behöva känna till hur signalen ursprungligen producerades\.
 
-Det här är ännu viktigare i Treudden. Blankdiss har redan forward_return_1d, 3d, 5d, 10d, 20d, 60d samt relativa marknads-/sektorutfall.
-
-I Treudden ska outcomes däremot vara oberoende av signalen.
-
-Det är en viktig arkitekturprincip:
-
-          FEATURES
-              │
-              ▼
-       Research Engine
-              │
-              ▼
-          OUTCOMES
-
-Inte:
-
-blankning → blanknings-outcome
-
-Då kan samma outcome användas för:
-
-blankning
-insider
-rapport
-konsensus
-kombinationer
-
-4. AI/ML
-
-Jag skulle lyfta själva experimentramverket och modellhanteringen, men inte låsa Treudden till de modeller Blankdiss råkar använda idag.
-
-Treudden ska kunna fråga:
-
-“Finns det någon kombination av dessa features som historiskt innehåller information?”
-
-utan att arkitekturen redan antar vilken modell som ska hitta den.
-
-⸻
-
-Och data-katalogen säger något viktigt
-
-Jag skulle inte flytta över de 28 features_*.jsonl-filerna som de är.
-
-De är resultatet av Blankdiss nuvarande featuremodell. De innehåller exempelvis:
-
-short_interest_pct
-active_holders
-short_interest_delta_pp
-short_interest_acceleration_pp
-price_return_5d
-price_return_20d
-price_volatility_20d
-sector_return_20d
-market_return_20d
-forward_return_20d
-...
-
-Det som ska flyttas är modellen för hur datasetet byggs och beskrivs, inte nödvändigtvis själva filerna.
-
-Treudden ska istället kunna producera något i stil med:
-
-feature dataset
-──────────────────────────────
-market.*
-blanking.*
-insider.*
-report.*
-consensus.*
-sector.*
-derived.*
-
-Och då kan en Treudden-rad i framtiden faktiskt beskriva samma observation ur alla tre uddarna.
+Det är en central princip\.
 
 Exempel:
 
-2026-10-01
-SE...
-    blanking.short_interest = 7.4
-    insider.net_buy_30d = +...
-    report.eps_surprise = +...
-    consensus.eps_revision_30d = +...
-    market.return_20d = ...
-    sector.return_20d = ...
+```text
+blanking.short_interest
+insider.net_buy_30d
+report.eps_surprise
+consensus.eps_revision_30d
+market.return_20d
+```
 
-Det är den stora arkitekturella vinsten.
+Researchmotorn ska kunna använda dessa på samma sätt\.
 
-Blankdiss har redan byggt första udden och mycket av infrastrukturen. Treudden blir platsen där vi gör infrastrukturen generell.
+## Outcomes
 
-Tanken är att vid ett senare skede om det blir kommersiellt att skapa Treudden Beslut AB och treuddenbeslut.se
+`outcomes/` beskriver de framtida utfall som research ska mäta\.
+
+Ett outcome ska vara oberoende av den signal som undersöks\.
+
+Exempel:
+
+```text
+future return > 5 %
+future return > 10 %
+future return < -5 %
+future volatility
+```
+
+Targets definieras i:
+
+```text
+outcomes/target_registry.json
+```
+
+Det gör att samma outcome kan användas av flera helt olika forskningsfrågor\.
+
+## Research
+
+`research/` är Treuddens centrala forskningsmotor\.
+
+Den är deklarativ\.
+
+En forskningsfråga uttrycks som en `ResearchSpec`, normalt i YAML, exempelvis:
+
+```yaml
+id: example_signal
+
+question: >
+  Har den övre 10 procenten av signalen
+  högre framtida avkastning?
+
+signals:
+  - name: example.signal
+    direction: upper
+    bins:
+      - 0.10
+
+targets:
+  - return_20d_positive
+
+analysis:
+  type: tail
+
+mode: scan
+```
+
+Researchmotorn bestämmer sedan hur experimentet ska genomföras\.
+
+Det innebär att själva analysmotorn inte behöver innehålla hårdkodade definitioner av en viss datakälla\.
+
+## Research modes
+
+Research kan köras i olika lägen\.
+
+Exempelvis:
+
+- `scan` – bredare sökning efter historiska samband
+- `deep` – mer detaljerad analys av en identifierad hypotes
+
+De tillåtna lägena och analysformerna styrs av research\-registret\.
+
+## Analysformer
+
+Researchmotorn innehåller stöd för bland annat:
+
+- tail analysis
+- regime comparison
+- nested regime comparison
+- multi\-regime comparison
+- conditional regime comparison
+- interaction analysis
+- stratified regime comparison
+- stratified interaction
+- bootstrap
+- walk\-forward analysis
+
+Det betyder att Treudden inte bara kan fråga om en enskild signal fungerar\.
+
+Den kan också undersöka frågor som:
+
+```text
+Signal A
+    +
+Signal B
+    ↓
+framtida outcome
+```
+
+eller:
+
+```text
+Signal A
+    ↓
+olika regimer
+    ↓
+Signal B
+    ↓
+framtida outcome
+```
+
+## Researchspecifikationer
+
+`research/spec.py` definierar den gemensamma modellen för en forskningsfråga\.
+
+En `ResearchSpec` innehåller bland annat:
+
+- `id`
+- `question`
+- `signals`
+- `targets`
+- `analysis`
+- `mode`
+- `windows`
+- `splits`
+- `metadata`
+
+Specifikationen valideras mot registren innan research körs\.
+
+Det gör att ogiltiga kombinationer kan stoppas innan själva analysen startar\.
+
+## Runner
+
+`research/runner.py` ansvarar för orkestreringen\.
+
+Runnern:
+
+1. hittar researchspecifikationer
+2. läser in dem
+3. validerar dem
+4. skapar en research\-session
+5. bygger cache
+6. kör varje spec
+7. returnerar resultaten
+
+Runnern ska inte innehålla specifik kunskap om exempelvis blankning eller insiderdata\.
+
+## Viktig arkitekturprincip
+
+Treudden ska vara **generellt medan datakällorna är specifika**\.
+
+Det innebär:
+
+```text
+             ┌── Blankning
+             │
+DATA ────────┼── Insider
+             │
+             ├── Rapporter
+             │
+             ├── Konsensus
+             │
+             └── Marknadsdata
+                    │
+                    ▼
+                 FEATURES
+                    │
+                    ▼
+              RESEARCH ENGINE
+                    │
+                    ▼
+                 OUTCOMES
+```
+
+Researchmotorn ska inte behöva veta varifrån en signal kommer\.
+
+Det är registren som kopplar samman signal\-ID:n med konkreta feature\-kolumner\.
+
+## Förhållandet till Blankdiss
+
+Treudden bygger vidare på erfarenheterna från Blankdiss\.
+
+Blankdiss har redan visat hur man kan bygga:
+
+```text
+rådata
+  ↓
+features
+  ↓
+research
+  ↓
+historiska outcomes
+  ↓
+prospektiv verifiering
+```
+
+Treudden ska däremot inte bli en kopia av Blankdiss\.
+
+Det som ska återanvändas är framför allt:
+
+- researchmotorns generella principer
+- deklarativa researchspecifikationer
+- signalregister
+- target/outcome\-register
+- cache
+- experimenthantering
+- walk\-forward/verifiering
+- separation mellan observation och outcome
+
+De faktiska Blankdiss\-featuresen ska inte automatiskt flyttas över\.
+
+## Framtida datalager
+
+När datakällorna kopplas in är den tänkta riktningen:
+
+```text
+data/
+├── raw/
+│   ├── blanking/
+│   ├── insider/
+│   ├── reports/
+│   ├── consensus/
+│   └── market/
+│
+└── processed/
+    ├── features/
+    ├── outcomes/
+    └── research/
+```
+
+Detta är en framtida struktur och ska inte betraktas som implementerad förrän katalogerna faktiskt finns\.
+
+## Forskningsprincip
+
+Treudden ska i första hand vara ett system för att **hitta och testa information**, inte ett system som försöker bevisa en förutbestämd idé\.
+
+Exempel:
+
+```text
+Hypotes:
+"Stor ökning av blankning föregår kursfall."
+
+Treudden:
+1. definiera signal
+2. definiera outcome
+3. definiera tidsfönster
+4. kör research
+5. utvärdera resultat
+6. kontrollera stabilitet
+7. prospektivt verifiera
+```
+
+Samma process ska kunna användas för alla informationskällor\.
+
+## Status
+
+Projektet är under utveckling\.
+
+Den centrala researchmotorn är redan implementerad i `research/`\.
+
+`features/` och `outcomes/` innehåller den gemensamma abstraheringen som krävs för att koppla researchmotorn till framtida datakällor\.
+
+Nästa större steg är att koppla in verkliga datakällor och bygga Treuddens generella featurelager\.
