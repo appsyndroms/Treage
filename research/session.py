@@ -16,13 +16,6 @@ from research.cache import (
 
 @dataclass
 class ResearchSession:
-    """
-    Gemensam context för en hel research-körning.
-
-    Alla specs som körs tillsammans delar samma DataFrame
-    och samma ResearchCache.
-    """
-
     frame: pd.DataFrame
     cache: ResearchCache
 
@@ -30,9 +23,23 @@ class ResearchSession:
 def _required_requirements(
     specs,
 ) -> list[ResearchRequirement]:
-    requirements: list[ResearchRequirement] = []
+    """
+    Bygger en unik lista över allt som research-sessionen behöver
+    för att kunna köra de angivna specifikationerna.
+    """
 
-    seen: set[tuple] = set()
+    requirements: list[
+        ResearchRequirement
+    ] = []
+
+    seen: set[
+        tuple[
+            str,
+            str,
+            float,
+            str,
+        ]
+    ] = set()
 
     for spec in specs:
         for signal in spec.signals:
@@ -70,38 +77,16 @@ def build_session(
     windows,
 ) -> ResearchSession:
     """
-    Bygger en gemensam research-session.
+    Bygger en research-session från ett externt data-loader-interface.
 
-    Data laddas av den caller som känner till datakällan.
-    Research-lagret behöver därför inte känna till om datan
-    kommer från blankning, insiderdata, rapporter eller en
-    kombination av dessa.
+    Research-lagret behöver därmed inte känna till om datat kommer från
+    JSONL, parquet, databas, API eller någon annan källa.
     """
-    print(
-        "Loading research data...",
-        flush=True,
-    )
 
     frame = frame_loader()
 
-    print(
-        f"Loaded {len(frame):,} research rows",
-        flush=True,
-    )
-
     requirements = _required_requirements(
         specs
-    )
-
-    print(
-        "Cache requirements: "
-        f"{len(requirements):,}",
-        flush=True,
-    )
-
-    print(
-        "Building shared research cache...",
-        flush=True,
     )
 
     cache = build_research_cache(
@@ -110,11 +95,6 @@ def build_session(
         target_registry=target_registry,
         signal_registry=signal_registry,
         windows=windows,
-    )
-
-    print(
-        "Shared research cache ready.",
-        flush=True,
     )
 
     return ResearchSession(
