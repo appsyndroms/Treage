@@ -5,68 +5,74 @@ from typing import Any
 
 from .analysis_utils import regime_rate
 from .cache import ResearchCache, _tail_key
-from .conditional import (
-    analyse_conditional_regime_comparison,
-)
+from .conditional import analyse_conditional_regime_comparison
 from .derived_metrics import apply_derived_metrics
 from .interaction import analyse_interaction
 from .multi_regime import analyse_multi_regime_comparison
 from .nested_regime import analyse_nested_regime_comparison
 from .regime import analyse_regime_comparison
-from .spec import ResearchSpec, SignalSpec
-from .stratified_interaction import (
-    analyse_stratified_interaction,
-)
-from .stratified_regime import (
-    analyse_stratified_regime_comparison,
-)
+from .spec import ResearchSpec
+from .stratified_interaction import analyse_stratified_interaction
+from .stratified_regime import analyse_stratified_regime_comparison
 
 
 def _analyse_tail(
     cache: ResearchCache,
-    signal: SignalSpec,
-    fraction: float,
-    target_name: str,
-    window_name: str,
-    split_name: str,
-) -> dict[str, Any]:
-    target = cache.targets[
-        target_name
-    ]
+    signal,
+    fraction,
+    target_name,
+    window_name,
+    split_name,
+):
+    signal_name = signal.name
 
+    key = _tail_key(
+        signal_name=signal_name,
+        direction=signal.direction,
+        fraction=fraction,
+    )
+
+    mask = cache.tail_masks[key]
+    target = cache.targets[target_name]
     window_mask = cache.window_masks[
         window_name
     ][split_name]
 
-    tail_mask = cache.tail_masks[
-        _tail_key(
-            signal.name,
-            signal.direction,
-            fraction,
-        )
-    ]
-
-    mask = (
-        window_mask
-        & tail_mask
+    selected = (
+        mask
+        & window_mask
+        & np.isfinite(target)
     )
 
-    metrics = regime_rate(
-        target,
-        mask,
+    count = int(
+        selected.sum()
     )
+
+    if count == 0:
+        return {
+            "signal": signal_name,
+            "direction": signal.direction,
+            "fraction": fraction,
+            "target": target_name,
+            "window": window_name,
+            "split": split_name,
+            "n": 0,
+            "rate": None,
+        }
 
     return {
-        "analysis": "tail",
-        "signal": signal.name,
+        "signal": signal_name,
         "direction": signal.direction,
         "fraction": fraction,
         "target": target_name,
         "window": window_name,
         "split": split_name,
-        "n": metrics["n"],
-        "events": metrics["events"],
-        "event_rate": metrics["event_rate"],
+        "n": count,
+        "rate": float(
+            np.mean(
+                target[selected]
+            )
+        ),
     }
 
 
@@ -74,256 +80,80 @@ def run_spec(
     cache: ResearchCache,
     spec: ResearchSpec,
 ) -> dict[str, Any]:
+    """
+    Kör en research-specifikation mot en färdig ResearchCache.
+
+    Engine känner inte till någon specifik datakälla.
+    Alla domänspecifika definitioner kommer via spec och cache.
+    """
+
+    analysis_type = spec.analysis.type
     results: list[dict[str, Any]] = []
 
-    if spec.analysis.type == "tail":
+    if analysis_type == "tail":
         for signal in spec.signals:
             for fraction in signal.bins:
                 for target_name in spec.targets:
-                    for window_name in spec.windows:
-                        for split_name in spec.splits:
+                    for window_name, splits in (
+                        cache.window_masks.items()
+                    ):
+                        for split_name in splits:
                             results.append(
                                 _analyse_tail(
-                                    cache,
-                                    signal,
-                                    fraction,
-                                    target_name,
-                                    window_name,
-                                    split_name,
+                                    cache=cache,
+                                    signal=signal,
+                                    fraction=fraction,
+                                    target_name=target_name,
+                                    window_name=window_name,
+                                    split_name=split_name,
                                 )
                             )
 
-    elif spec.analysis.type == "interaction":
-        fractions = tuple(
-            signal.bins[0]
-            for signal in spec.signals
+    elif analysis_type == "interaction":
+        results = analyse_interaction(
+            cache=cache,
+            spec=spec,
         )
 
-        bootstrap = (
-            spec.analysis.bootstrap
+    elif analysis_type == "regime_comparison":
+        results = analyse_regime_comparison(
+            cache=cache,
+            spec=spec,
         )
 
-        for target_name in spec.targets:
-            for window_name in spec.windows:
-                for split_name in spec.splits:
-                    results.append(
-                        analyse_interaction(
-                            cache,
-                            spec.signals,
-                            fractions,
-                            target_name,
-                            window_name,
-                            split_name,
-                            bootstrap=bootstrap,
-                            bootstrap_iterations=(
-                                spec.analysis
-                                .bootstrap_iterations
-                            ),
-                            spec_id=spec.id,
-                        )
-                    )
-
-    elif spec.analysis.type == "regime_comparison":
-        fractions = tuple(
-            signal.bins[0]
-            for signal in spec.signals
+    elif analysis_type == "nested_regime_comparison":
+        results = analyse_nested_regime_comparison(
+            cache=cache,
+            spec=spec,
         )
 
-        bootstrap = (
-            spec.analysis.bootstrap
+    elif analysis_type == "conditional_regime_comparison":
+        results = analyse_conditional_regime_comparison(
+            cache=cache,
+            spec=spec,
         )
 
-        for target_name in spec.targets:
-            for window_name in spec.windows:
-                for split_name in spec.splits:
-                    results.append(
-                        analyse_regime_comparison(
-                            cache,
-                            spec.signals,
-                            target_name,
-                            fractions,
-                            window_name,
-                            split_name,
-                            bootstrap=bootstrap,
-                            bootstrap_iterations=(
-                                spec.analysis
-                                .bootstrap_iterations
-                            ),
-                            spec_id=spec.id,
-                        )
-                    )
-
-    elif spec.analysis.type == "nested_regime_comparison":
-        fractions = tuple(
-            signal.bins[0]
-            for signal in spec.signals
+    elif analysis_type == "multi_regime_comparison":
+        results = analyse_multi_regime_comparison(
+            cache=cache,
+            spec=spec,
         )
 
-        bootstrap = (
-            spec.analysis.bootstrap
+    elif analysis_type == "stratified_regime_comparison":
+        results = analyse_stratified_regime_comparison(
+            cache=cache,
+            spec=spec,
         )
 
-        for target_name in spec.targets:
-            for window_name in spec.windows:
-                for split_name in spec.splits:
-                    results.append(
-                        analyse_nested_regime_comparison(
-                            cache,
-                            spec.signals,
-                            target_name,
-                            fractions,
-                            window_name,
-                            split_name,
-                            bootstrap=bootstrap,
-                            bootstrap_iterations=(
-                                spec.analysis
-                                .bootstrap_iterations
-                            ),
-                            spec_id=spec.id,
-                        )
-                    )
-
-    elif spec.analysis.type == "conditional_regime_comparison":
-        bootstrap = (
-            spec.analysis.bootstrap
+    elif analysis_type == "stratified_interaction":
+        results = analyse_stratified_interaction(
+            cache=cache,
+            spec=spec,
         )
-
-        baseline_fraction_options = [
-            signal.bins
-            for signal in spec.signals[:-1]
-        ]
-
-        for baseline_fractions in product(
-            *baseline_fraction_options
-        ):
-            for incremental_fraction in (
-                spec.signals[-1].bins
-            ):
-                fractions = (
-                    *baseline_fractions,
-                    incremental_fraction,
-                )
-
-                for target_name in spec.targets:
-                    for window_name in spec.windows:
-                        for split_name in spec.splits:
-                            results.append(
-                                analyse_conditional_regime_comparison(
-                                    cache,
-                                    spec.signals,
-                                    target_name,
-                                    fractions,
-                                    window_name,
-                                    split_name,
-                                    bootstrap=bootstrap,
-                                    bootstrap_iterations=(
-                                        spec.analysis
-                                        .bootstrap_iterations
-                                    ),
-                                    spec_id=spec.id,
-                                )
-                            )
-
-    elif spec.analysis.type == "multi_regime_comparison":
-        fractions = tuple(
-            signal.bins[0]
-            for signal in spec.signals
-        )
-
-        bootstrap = (
-            spec.analysis.bootstrap
-        )
-
-        for target_name in spec.targets:
-            for window_name in spec.windows:
-                for split_name in spec.splits:
-                    results.append(
-                        analyse_multi_regime_comparison(
-                            cache,
-                            spec.signals,
-                            target_name,
-                            fractions,
-                            window_name,
-                            split_name,
-                            bootstrap=bootstrap,
-                            bootstrap_iterations=(
-                                spec.analysis
-                                .bootstrap_iterations
-                            ),
-                            spec_id=spec.id,
-                        )
-                    )
-
-    elif (
-        spec.analysis.type
-        == "stratified_regime_comparison"
-    ):
-        fractions = tuple(
-            signal.bins[0]
-            for signal in spec.signals
-        )
-
-        bootstrap = (
-            spec.analysis.bootstrap
-        )
-
-        for target_name in spec.targets:
-            for window_name in spec.windows:
-                for split_name in spec.splits:
-                    results.extend(
-                        analyse_stratified_regime_comparison(
-                            cache,
-                            spec.signals,
-                            target_name,
-                            fractions,
-                            window_name,
-                            split_name,
-                            bootstrap=bootstrap,
-                            bootstrap_iterations=(
-                                spec.analysis
-                                .bootstrap_iterations
-                            ),
-                            spec_id=spec.id,
-                        )
-                    )
-
-    elif (
-        spec.analysis.type
-        == "stratified_interaction"
-    ):
-        fractions = tuple(
-            signal.bins[0]
-            for signal in spec.signals
-        )
-
-        bootstrap = (
-            spec.analysis.bootstrap
-        )
-
-        for target_name in spec.targets:
-            for window_name in spec.windows:
-                for split_name in spec.splits:
-                    results.extend(
-                        analyse_stratified_interaction(
-                            cache,
-                            spec.signals,
-                            target_name,
-                            fractions,
-                            window_name,
-                            split_name,
-                            bootstrap=bootstrap,
-                            bootstrap_iterations=(
-                                spec.analysis
-                                .bootstrap_iterations
-                            ),
-                            spec_id=spec.id,
-                        )
-                    )
 
     else:
         raise ValueError(
-            f"Unsupported analysis type: "
-            f"{spec.analysis.type}"
+            f"Okänd analysform: {analysis_type}"
         )
 
     results = apply_derived_metrics(
@@ -335,6 +165,6 @@ def run_spec(
         "spec_id": spec.id,
         "question": spec.question,
         "mode": spec.mode,
-        "analysis": spec.analysis.type,
+        "analysis": analysis_type,
         "results": results,
     }
