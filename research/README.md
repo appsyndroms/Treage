@@ -1,5 +1,3 @@
-Nästa fil: research/README.md.
-
 Research
 
 research/ är Treuddens forskningsmotor.
