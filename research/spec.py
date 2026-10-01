@@ -1,422 +1,264 @@
+"""Specifikationer och validering för Treuddens research."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any
 
-import yaml
 
-
-VALID_MODES = {
-    "scan",
-    "deep",
-}
-
-
-VALID_ANALYSIS_TYPES = {
-    "interaction",
-    "tail",
-    "regime_comparison",
-    "multi_regime_comparison",
-    "nested_regime_comparison",
-    "conditional_regime_comparison",
-    "stratified_regime_comparison",
-    "stratified_interaction",
-}
-
-
-VALID_DIRECTIONS = {
-    "upper",
-    "lower",
-}
-
-
-ANALYSIS_SIGNAL_REQUIREMENTS = {
-    "tail": (1, None),
-    "interaction": (2, 2),
-    "regime_comparison": (2, 2),
-    "multi_regime_comparison": (3, None),
-    "nested_regime_comparison": (3, 3),
-    "conditional_regime_comparison": (2, None),
-    "stratified_regime_comparison": (3, 3),
-    "stratified_interaction": (3, 3),
-}
+DEFAULT_REGISTRY_PATH = (
+    Path(__file__).resolve().parent / "research_registry.json"
+)
 
 
 @dataclass(frozen=True)
 class SignalSpec:
     name: str
-    direction: str = "upper"
-    bins: tuple[float, ...] = (0.10,)
-
-    def __post_init__(self) -> None:
-        if not self.name:
-            raise ValueError(
-                "Signal måste ha ett namn."
-            )
-
-        if self.direction not in VALID_DIRECTIONS:
-            raise ValueError(
-                f"Ogiltig signal direction: "
-                f"{self.direction}"
-            )
-
-        if not self.bins:
-            raise ValueError(
-                "Signal måste ha minst en bin."
-            )
-
-        for fraction in self.bins:
-            if not 0 < fraction <= 1:
-                raise ValueError(
-                    f"Ogiltig signal bin: "
-                    f"{fraction}"
-                )
+    direction: str
+    bins: tuple[float, ...]
 
 
 @dataclass(frozen=True)
 class AnalysisSpec:
-    type: str = "tail"
-    bootstrap: bool = False
-    bootstrap_iterations: int = 2000
-
-    def __post_init__(self) -> None:
-        if self.type not in VALID_ANALYSIS_TYPES:
-            raise ValueError(
-                f"Ogiltig analysis.type: "
-                f"{self.type}"
-            )
-
-        if self.bootstrap_iterations < 1:
-            raise ValueError(
-                "bootstrap_iterations måste vara > 0."
-            )
+    type: str
+    params: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class ResearchSpec:
     id: str
     question: str
+    mode: str
     signals: tuple[SignalSpec, ...]
     targets: tuple[str, ...]
-    analysis: AnalysisSpec = field(
-        default_factory=AnalysisSpec
-    )
-    mode: str = "scan"
-    windows: tuple[str, ...] = (
-        "window_1",
-        "window_2",
-    )
-    splits: tuple[str, ...] = (
-        "test",
-    )
-    metadata: dict[str, Any] = field(
-        default_factory=dict
-    )
+    analysis: AnalysisSpec
+    derived_metrics: tuple[str, ...]
 
-    def __post_init__(self) -> None:
-        if not self.id:
-            raise ValueError(
-                "Research spec saknar id."
-            )
 
-        if not self.question:
-            raise ValueError(
-                "Research spec saknar question."
-            )
+@dataclass(frozen=True)
+class AnalysisSignalRequirement:
+    minimum: int
+    maximum: int | None
 
-        if self.mode not in VALID_MODES:
-            raise ValueError(
-                f"Ogiltigt research mode: "
-                f"{self.mode}"
-            )
 
-        if not self.signals:
-            raise ValueError(
-                "Research spec måste ha minst "
-                "en signal."
-            )
+@dataclass(frozen=True)
+class ResearchRegistry:
+    modes: frozenset[str]
+    analysis_types: frozenset[str]
+    directions: frozenset[str]
+    signal_requirements: dict[
+        str,
+        AnalysisSignalRequirement,
+    ]
 
-        if not self.targets:
-            raise ValueError(
-                "Research spec måste ha minst "
-                "ett target."
-            )
 
-        if not self.windows:
-            raise ValueError(
-                "Research spec måste ha minst "
-                "ett window."
-            )
+def load_research_registry(
+    path: Path | str = DEFAULT_REGISTRY_PATH,
+) -> ResearchRegistry:
+    """Läser research-registret från JSON."""
 
-        if not self.splits:
-            raise ValueError(
-                "Research spec måste ha minst "
-                "ett split."
-            )
+    registry_path = Path(path)
 
-        _validate_analysis_signal_count(
-            self.analysis.type,
-            len(self.signals),
+    with registry_path.open(
+        "r",
+        encoding="utf-8",
+    ) as handle:
+        data = json.load(handle)
+
+    requirements = {}
+
+    for analysis_type, requirement in data.get(
+        "analysis_signal_requirements",
+        {},
+    ).items():
+        requirements[analysis_type] = AnalysisSignalRequirement(
+            minimum=int(requirement["min"]),
+            maximum=(
+                None
+                if requirement.get("max") is None
+                else int(requirement["max"])
+            ),
         )
 
-
-def _tuple_floats(
-    values: Any,
-) -> tuple[float, ...]:
-    if values is None:
-        return ()
-
-    return tuple(
-        float(value)
-        for value in values
+    return ResearchRegistry(
+        modes=frozenset(
+            data.get("modes", [])
+        ),
+        analysis_types=frozenset(
+            data.get("analysis_types", [])
+        ),
+        directions=frozenset(
+            data.get("directions", [])
+        ),
+        signal_requirements=requirements,
     )
 
 
-def _validate_analysis_signal_count(
-    analysis_type: str,
-    signal_count: int,
+def _validate_signal_spec(
+    signal: SignalSpec,
+    registry: ResearchRegistry,
 ) -> None:
-    min_signals, max_signals = (
-        ANALYSIS_SIGNAL_REQUIREMENTS[analysis_type]
-    )
+    if signal.direction not in registry.directions:
+        raise ValueError(
+            f"Ogiltig signalriktning: {signal.direction}"
+        )
 
-    if signal_count < min_signals:
-        if max_signals == min_signals:
+    if not signal.bins:
+        raise ValueError(
+            f"Signal saknar bins: {signal.name}"
+        )
+
+    for fraction in signal.bins:
+        if not 0 < fraction <= 1:
             raise ValueError(
-                f"{analysis_type} kräver "
-                f"exakt {min_signals} signaler."
+                f"Ogiltig bin-fraktion för "
+                f"{signal.name}: {fraction}"
             )
 
+
+def _validate_analysis(
+    analysis: AnalysisSpec,
+    signal_count: int,
+    registry: ResearchRegistry,
+) -> None:
+    if analysis.type not in registry.analysis_types:
         raise ValueError(
-            f"{analysis_type} kräver "
-            f"minst {min_signals} signaler."
+            f"Okänd analysform: {analysis.type}"
+        )
+
+    requirement = registry.signal_requirements.get(
+        analysis.type
+    )
+
+    if requirement is None:
+        raise ValueError(
+            f"Analysform saknar signal-krav i "
+            f"research-registret: {analysis.type}"
+        )
+
+    if signal_count < requirement.minimum:
+        raise ValueError(
+            f"Analysen '{analysis.type}' kräver minst "
+            f"{requirement.minimum} signaler, "
+            f"men fick {signal_count}."
         )
 
     if (
-        max_signals is not None
-        and signal_count > max_signals
+        requirement.maximum is not None
+        and signal_count > requirement.maximum
     ):
         raise ValueError(
-            f"{analysis_type} kräver "
-            f"exakt {max_signals} signaler."
+            f"Analysen '{analysis.type}' tillåter högst "
+            f"{requirement.maximum} signaler, "
+            f"men fick {signal_count}."
         )
 
 
-def load_spec(
-    path: str | Path,
+def validate_spec(
+    spec: ResearchSpec,
+    registry: ResearchRegistry | None = None,
+) -> None:
+    """Validerar en research-specifikation."""
+
+    if registry is None:
+        registry = load_research_registry()
+
+    if not spec.id:
+        raise ValueError(
+            "Research-spec saknar id."
+        )
+
+    if not spec.question:
+        raise ValueError(
+            f"Research-spec '{spec.id}' saknar question."
+        )
+
+    if spec.mode not in registry.modes:
+        raise ValueError(
+            f"Ogiltigt research-mode: {spec.mode}"
+        )
+
+    if not spec.signals:
+        raise ValueError(
+            f"Research-spec '{spec.id}' saknar signaler."
+        )
+
+    if not spec.targets:
+        raise ValueError(
+            f"Research-spec '{spec.id}' saknar targets."
+        )
+
+    for signal in spec.signals:
+        _validate_signal_spec(
+            signal,
+            registry,
+        )
+
+    _validate_analysis(
+        analysis=spec.analysis,
+        signal_count=len(spec.signals),
+        registry=registry,
+    )
+
+
+def build_spec(
+    data: dict[str, Any],
+    registry: ResearchRegistry | None = None,
 ) -> ResearchSpec:
-    path = Path(path)
+    """Bygger och validerar en ResearchSpec från en dict."""
 
-    payload = yaml.safe_load(
-        path.read_text(
-            encoding="utf-8"
+    if registry is None:
+        registry = load_research_registry()
+
+    signals = tuple(
+        SignalSpec(
+            name=item["name"],
+            direction=item["direction"],
+            bins=tuple(
+                float(value)
+                for value in item["bins"]
+            ),
         )
+        for item in data.get("signals", [])
     )
 
-    if not isinstance(payload, dict):
-        raise ValueError(
-            f"Research spec måste vara ett objekt: {path}"
-        )
-
-    spec_id = payload.get("id")
-    question = payload.get("question")
-
-    if not spec_id:
-        raise ValueError(
-            f"Research spec saknar id: {path}"
-        )
-
-    if not question:
-        raise ValueError(
-            f"Research spec saknar question: {path}"
-        )
-
-    mode = str(
-        payload.get(
-            "mode",
-            "scan",
-        )
-    ).lower()
-
-    if mode not in VALID_MODES:
-        raise ValueError(
-            f"Ogiltigt mode '{mode}' i {path}"
-        )
-
-    raw_signals = payload.get(
-        "signals",
-        [],
-    )
-
-    if not raw_signals:
-        raise ValueError(
-            f"Research spec saknar signals: {path}"
-        )
-
-    signals: list[SignalSpec] = []
-
-    for item in raw_signals:
-        if not isinstance(item, dict):
-            raise ValueError(
-                f"Ogiltig signaldefinition i {path}"
-            )
-
-        name = item.get("name")
-
-        if not name:
-            raise ValueError(
-                f"Signal saknar name i {path}"
-            )
-
-        direction = str(
-            item.get(
-                "direction",
-                "upper",
-            )
-        ).lower()
-
-        if direction not in VALID_DIRECTIONS:
-            raise ValueError(
-                f"Ogiltig direction '{direction}' "
-                f"för signal '{name}'."
-            )
-
-        bins = _tuple_floats(
-            item.get(
-                "bins",
-                (0.10,),
-            )
-        )
-
-        if not bins:
-            raise ValueError(
-                f"Signal '{name}' saknar bins."
-            )
-
-        signals.append(
-            SignalSpec(
-                name=str(name),
-                direction=direction,
-                bins=bins,
-            )
-        )
-
-    targets = tuple(
-        str(target)
-        for target in payload.get(
-            "targets",
-            [],
-        )
-    )
-
-    if not targets:
-        raise ValueError(
-            f"Research spec saknar targets: {path}"
-        )
-
-    raw_analysis = payload.get(
+    analysis_data = data.get(
         "analysis",
         {},
     )
 
-    if not isinstance(raw_analysis, dict):
-        raise ValueError(
-            f"analysis måste vara ett objekt: {path}"
-        )
-
-    analysis_type = str(
-        raw_analysis.get(
-            "type",
-            "tail",
-        )
-    ).lower()
-
-    if analysis_type not in VALID_ANALYSIS_TYPES:
-        raise ValueError(
-            f"Okänd analysis.type "
-            f"'{analysis_type}' i {path}"
-        )
-
-    _validate_analysis_signal_count(
-        analysis_type,
-        len(signals),
-    )
-
-    bootstrap = bool(
-        raw_analysis.get(
-            "bootstrap",
-            False
-        )
-    )
-
-    bootstrap_iterations = int(
-        raw_analysis.get(
-            "bootstrap_iterations",
-            2000,
-        )
-    )
-
-    if bootstrap_iterations < 1:
-        raise ValueError(
-            "bootstrap_iterations måste vara > 0."
-        )
-
     analysis = AnalysisSpec(
-        type=analysis_type,
-        bootstrap=bootstrap,
-        bootstrap_iterations=(
-            bootstrap_iterations
+        type=analysis_data["type"],
+        params=dict(
+            analysis_data.get(
+                "params",
+                {},
+            )
         ),
     )
 
-    windows = tuple(
-        str(window)
-        for window in payload.get(
-            "windows",
-            (
-                "window_1",
-                "window_2",
-            ),
-        )
-    )
-
-    if not windows:
-        raise ValueError(
-            "Research spec måste ha minst ett window."
-        )
-
-    splits = tuple(
-        str(split)
-        for split in payload.get(
-            "splits",
-            ("test",),
-        )
-    )
-
-    if not splits:
-        raise ValueError(
-            "Research spec måste ha minst ett split."
-        )
-
-    metadata = payload.get(
-        "metadata",
-        {},
-    )
-
-    if not isinstance(metadata, dict):
-        raise ValueError(
-            f"metadata måste vara ett objekt: {path}"
-        )
-
-    return ResearchSpec(
-        id=str(spec_id),
-        question=str(question),
-        signals=tuple(signals),
-        targets=targets,
+    spec = ResearchSpec(
+        id=data["id"],
+        question=data["question"],
+        mode=data["mode"],
+        signals=signals,
+        targets=tuple(
+            data.get("targets", [])
+        ),
         analysis=analysis,
-        mode=mode,
-        windows=windows,
-        splits=splits,
-        metadata=dict(metadata),
+        derived_metrics=tuple(
+            data.get(
+                "derived_metrics",
+                [],
+            )
+        ),
     )
+
+    validate_spec(
+        spec,
+        registry,
+    )
+
+    return spec
