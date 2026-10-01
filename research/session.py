@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Callable, Sequence
-import pandas as pd
+from typing import Sequence
+
+from ..features.dataset import FeatureDataset
 from ..features.registry import SignalRegistry
 from ..outcomes.registry import TargetRegistry
 from .cache import (
@@ -10,10 +12,14 @@ from .cache import (
     build_research_cache,
 )
 from .spec import ResearchSpec
+
+
 @dataclass
 class ResearchSession:
-    frame: pd.DataFrame
+    dataset: FeatureDataset
     cache: ResearchCache
+
+
 def _required_requirements(
     specs: Sequence[ResearchSpec],
 ) -> list[ResearchRequirement]:
@@ -21,9 +27,11 @@ def _required_requirements(
     Bygger en unik lista över allt som research-sessionen behöver
     för att kunna köra de angivna specifikationerna.
     """
+
     requirements: list[
         ResearchRequirement
     ] = []
+
     seen: set[
         tuple[
             str,
@@ -32,6 +40,7 @@ def _required_requirements(
             str,
         ]
     ] = set()
+
     for spec in specs:
         for signal in spec.signals:
             for target_name in spec.targets:
@@ -42,9 +51,12 @@ def _required_requirements(
                         fraction,
                         signal.direction,
                     )
+
                     if key in seen:
                         continue
+
                     seen.add(key)
+
                     requirements.append(
                         ResearchRequirement(
                             signal_name=signal.name,
@@ -53,31 +65,39 @@ def _required_requirements(
                             tail_direction=signal.direction,
                         )
                     )
+
     return requirements
+
+
 def build_session(
     specs: Sequence[ResearchSpec],
-    frame_loader: Callable[[], pd.DataFrame],
+    dataset: FeatureDataset,
     signal_registry: SignalRegistry,
     target_registry: TargetRegistry,
     windows,
 ) -> ResearchSession:
     """
-    Bygger en research-session från ett externt data-loader-interface.
-    Research-lagret behöver därmed inte känna till om datat kommer från
-    JSONL, parquet, databas, API eller någon annan källa.
+    Bygger en research-session från ett färdigt FeatureDataset.
+
+    Research-lagret behöver därmed inte känna till om datat kommer
+    från JSONL, parquet, databas, API eller någon annan källa.
     """
-    frame = frame_loader()
+
+    dataset.validate()
+
     requirements = _required_requirements(
         specs
     )
+
     cache = build_research_cache(
-        frame=frame,
+        frame=dataset.frame,
         requirements=requirements,
         target_registry=target_registry,
         signal_registry=signal_registry,
         windows=windows,
     )
+
     return ResearchSession(
-        frame=frame,
+        dataset=dataset,
         cache=cache,
     )
