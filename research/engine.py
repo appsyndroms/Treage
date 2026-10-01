@@ -301,6 +301,7 @@ def run_spec(
                                 .bootstrap_iterations
                             ),
                             spec_id=spec.id,
+                            rules=spec.analysis.rules,
                         )
                     )
 
