@@ -57,7 +57,10 @@ def load_research_registry(
         "analysis_rules",
         {},
     )
-    if not isinstance(raw_rules, dict):
+    if not isinstance(
+        raw_rules,
+        dict,
+    ):
         raise ValueError(
             "analysis_rules måste vara ett objekt."
         )
@@ -346,7 +349,10 @@ def load_spec(
             encoding="utf-8"
         )
     )
-    if not isinstance(payload, dict):
+    if not isinstance(
+        payload,
+        dict,
+    ):
         raise ValueError(
             f"Research spec måste vara ett objekt: {path}"
         )
@@ -380,7 +386,10 @@ def load_spec(
         )
     signals: list[SignalSpec] = []
     for item in raw_signals:
-        if not isinstance(item, dict):
+        if not isinstance(
+            item,
+            dict,
+        ):
             raise ValueError(
                 f"Ogiltig signaldefinition i {path}"
             )
@@ -428,7 +437,10 @@ def load_spec(
         "analysis",
         {},
     )
-    if not isinstance(raw_analysis, dict):
+    if not isinstance(
+        raw_analysis,
+        dict,
+    ):
         raise ValueError(
             f"analysis måste vara ett objekt: {path}"
         )
@@ -498,7 +510,10 @@ def load_spec(
         "metadata",
         {},
     )
-    if not isinstance(metadata, dict):
+    if not isinstance(
+        metadata,
+        dict,
+    ):
         raise ValueError(
             f"metadata måste vara ett objekt: {path}"
         )
